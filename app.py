@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from PIL import Image
 import urllib.parse
+import time
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION & CORPORATE BRAND DESIGN THEME
@@ -195,13 +196,30 @@ with tab_active:
             
             if selected_task_label:
                 sel_id = task_options[selected_task_label]
-                # Updated to your live Streamlit URL
-                app_url = "https://12tenbank-collab-building21-app-app-gn893rndmg.streamlit.app"
+                
+                # ========================================================
+                # 🚨 PASTE YOUR COPIED SAFARI APP LINK BELOW THIS LINE 🚨
+                # ========================================================
+                app_url = "PASTE_YOUR_LINK_HERE"
+                
+                # Failsafe cleanup (adds https:// if you missed it copying)
+                if not app_url.startswith("http"):
+                    app_url = "https://" + app_url
+                if app_url.endswith("/"):
+                    app_url = app_url[:-1]
+                    
                 review_url = f"{app_url}?review=true&id={sel_id}"
                 encoded_url = urllib.parse.quote(review_url)
-                qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
+                
+                # CACHE BUSTER: Forces the API to generate a fresh image
+                cache_bust = int(time.time())
+                qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}&time={cache_bust}"
                 
                 st.markdown("### Present this code to the guest:")
+                
+                # TROUBLESHOOTING LINK
+                st.info(f"🔗 **Testing Link:** [Tap here to test the review page directly]({review_url})")
+                
                 col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
                 with col_q2:
                     st.image(qr_image_url, use_container_width=True)
