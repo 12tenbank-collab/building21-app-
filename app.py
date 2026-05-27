@@ -43,12 +43,16 @@ db = get_shared_database()
 STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "Silvia M.", "Dispatch 1"]
 
 # ---------------------------------------------------------
-# 3. APPLICATION STRUCTURE
+# 3. DISPLAY LOGO & HEADER LOGIC (BULLETPROOF WEB LINK)
 # ---------------------------------------------------------
-st.title("BUILDING 21 | SYNCED WORK ORDER HUB")
-st.markdown("---")
+# Pulling directly from your public repository link to bypass internal server lag
+logo_url = "https://raw.githubusercontent.com/12tenbank-collab/building21-app/main/IMG_0783.png"
 
-# Refresh button to manually pull down latest changes from other team members
+try:
+    st.image(logo_url, use_container_width=True)
+except:
+    st.title("BUILDING 21")
+
 if st.button("🔄 Check For New Dispatches / Updates"):
     st.rerun()
 
