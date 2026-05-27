@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from PIL import Image
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION & CORPORATE BRAND DESIGN THEME
@@ -41,13 +42,16 @@ db = get_shared_database()
 STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "Silvia M.", "Dispatch 1"]
 
 # ---------------------------------------------------------
-# 3. DISPLAY HEADER LOGO (VIA DIRECT GITHUB URL)
+# 3. DISPLAY HEADER LOGO (LOCAL FILE READER)
 # ---------------------------------------------------------
-logo_url = "https://raw.githubusercontent.com/12tenbank-collab/building21-app/main/IMG_0783.png"
-
-col_l1, col_l2, col_l3 = st.columns([1, 4, 1])
-with col_l2:
-    st.image(logo_url, use_container_width=True)
+try:
+    col_l1, col_l2, col_l3 = st.columns([1, 4, 1])
+    with col_l2:
+        # Bypassing links entirely and reading the file directly from the GitHub folder
+        logo_img = Image.open("IMG_0783.png")
+        st.image(logo_img, use_container_width=True)
+except Exception as e:
+    st.error(f"Waiting on image sync...")
 
 st.markdown("<h3 style='text-align: center; color: #0A3161;'>SYNCED WORK ORDER HUB</h3>", unsafe_allow_html=True)
 st.markdown("---")
