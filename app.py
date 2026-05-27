@@ -195,8 +195,8 @@ with tab_active:
             
             if selected_task_label:
                 sel_id = task_options[selected_task_label]
-                # Build the review link directly to your app
-                app_url = "https://12tenbank-collab-building21-app-app-q3rkgnvflazy.streamlit.app"
+                # Updated to your live Streamlit URL
+                app_url = "https://12tenbank-collab-building21-app-app-gn893rndmg.streamlit.app"
                 review_url = f"{app_url}?review=true&id={sel_id}"
                 encoded_url = urllib.parse.quote(review_url)
                 qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
