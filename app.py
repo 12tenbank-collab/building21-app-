@@ -5,9 +5,6 @@ from PIL import Image
 import urllib.parse
 import urllib.request
 import time
-import re
-import altair as alt
-import random
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION & CORPORATE BRAND DESIGN THEME
@@ -28,88 +25,241 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# HELPER LOGIC: SMART FLOOR EXTRACTOR
-# ---------------------------------------------------------
-def get_floor(room_string):
-    matches = re.findall(r'\d+', str(room_string))
-    if not matches: return 0
-    last_num = int(matches[-1])
-    floor = last_num // 100 if last_num >= 100 else 1 
-    if floor == 13: return 14
-    return floor
-
-# ---------------------------------------------------------
 # 2. FREE CENTRAL SYNC DATABASE ENGINE
 # ---------------------------------------------------------
 @st.cache_resource
 def get_shared_database():
-    records = []
-    # Mock data to populate your heatmap
-    for i in range(40):
-        fl = random.choice([1, 2, 3, 4, 6] if random.random() > 0.3 else [8, 11, 12, 14])
-        records.append({"id": i, "room": f"{fl}{random.randint(10, 25)}", "status": "Pending", "assigned_to": "Stephen S.", "points": 0})
-    return {"records": records}
+    return {
+        "records": [
+            {
+                "id": 101, "room": "204", "type": "Guest Call", "priority": "Urgent",
+                "dept": "Maintenance", "assigned_to": "James W.", "desc": "AC not cooling",
+                "created_at": "2026-05-27 08:00:00", "started_at": "2026-05-27 08:05:00",
+                "completed_at": "2026-05-27 08:35:00", "comp_notes": "Replaced filter and topped off freon",
+                "status": "Completed", "is_repeat": False, "points": 10, "guest_review": None
+            }
+        ]
+    }
 
 db = get_shared_database()
 STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "Silvia M.", "Dispatch 1"]
 
 # ---------------------------------------------------------
-# 3. GUEST REVIEW PORTAL (HIDES MAIN APP)
+# 3. GUEST REVIEW PORTAL (HIDES MAIN APP IF ACCESSED VIA QR)
 # ---------------------------------------------------------
 if "review" in st.query_params:
+    order_id = int(st.query_params.get("id", 0))
+    order = next((o for o in db["records"] if o["id"] == order_id), None)
+    
     st.markdown("<h2 style='text-align: center; color: #0A3161;'>Building 21 Guest Feedback</h2>", unsafe_allow_html=True)
-    st.stop()
+    st.markdown("---")
+    
+    if not order:
+        st.error("Invalid review link.")
+    elif order.get("guest_review"):
+        st.success("✅ Thank you! Your feedback for this service has already been recorded.")
+    else:
+        st.write(f"**Reviewing Service For:** Room {order['room']}")
+        with st.form("guest_review_form"):
+            st.markdown("### Rate Your Experience (1 to 5 Stars)")
+            quickness = st.slider("1. Quickness / How fast did we respond to your concern?", 1, 5, 5)
+            efficiency = st.slider("2. Efficiency / How well did we fix the problem?", 1, 5, 5)
+            service = st.slider("3. Customer Service / How friendly and knowledgeable were we?", 1, 5, 5)
+            
+            st.markdown("### Additional Feedback")
+            notes = st.text_area("Any additional notes or comments for our team?")
+            contact_mgmt = st.checkbox("I would like to speak with management regarding this service.")
+            
+            if st.form_submit_button("Submit Review"):
+                order["guest_review"] = {
+                    "quickness": quickness,
+                    "efficiency": efficiency,
+                    "service": service,
+                    "notes": notes,
+                    "contact_mgmt": contact_mgmt,
+                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+                st.success("Thank you for your valuable feedback! You may now close this screen.")
+                st.rerun()
+    st.stop() # This prevents the rest of the staff app from loading for the guest
 
 # ---------------------------------------------------------
-# 4. STAFF HUB
+# 4. DISPLAY HEADER LOGO (STAFF APP ONLY)
 # ---------------------------------------------------------
 try:
-    with st.columns([1, 4, 1])[1]:
-        st.image(Image.open("IMG_0783.png"), use_container_width=True)
-except: pass
+    col_l1, col_l2, col_l3 = st.columns([1, 4, 1])
+    with col_l2:
+        logo_img = Image.open("IMG_0783.png")
+        st.image(logo_img, use_container_width=True)
+except Exception as e:
+    pass
 
 st.markdown("<h3 style='text-align: center; color: #0A3161;'>SYNCED WORK ORDER HUB</h3>", unsafe_allow_html=True)
+st.markdown("---")
 
-tab_create, tab_active, tab_history, tab_performance = st.tabs(["🆕 Create", "🛠️ Active", "🔍 History", "📊 Analytics"])
+if st.button("🔄 Check For New Dispatches / Updates"):
+    st.rerun()
 
+tab_create, tab_active, tab_history, tab_performance = st.tabs([
+    "🆕 Create Work Order", 
+    "🛠️ Active Tasks & Completion", 
+    "🔍 Room History",
+    "📊 Analytics"
+])
+
+# TAB 1: WORK ORDER CREATION
 with tab_create:
-    with st.form("wo", clear_on_submit=True):
-        room = st.text_input("Room Number:")
-        if st.form_submit_button("Dispatch"):
-            db["records"].append({"id": len(db["records"])+1, "room": room, "status": "Pending", "assigned_to": "James W."})
-            st.rerun()
+    st.header("Log New Work Order")
+    with st.form("work_order_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            room = st.text_input("Room Number:")
+            order_type = st.selectbox("Type:", ["Supervisor", "Guest Call"])
+            priority = st.selectbox("Priority:", ["Urgent", "Time Queue"])
+        with col2:
+            dept = st.selectbox("Department:", ["Housekeeping", "Maintenance"])
+            assign_to = st.selectbox("Assign To:", STAFF_LIST)
+            is_repeat = st.checkbox("Is this a Repeat Call? (-5 Points)")
+            
+        desc = st.text_area("Request Description:")
+        submit_btn = st.form_submit_button("Dispatch Work Order")
+        
+        if submit_btn:
+            if not room or not desc:
+                st.error("❌ Fill out room numbers and task details.")
+            else:
+                new_id = max([o["id"] for o in db["records"]]) + 1 if db["records"] else 100
+                new_order = {
+                    "id": new_id, "room": room, "type": order_type, "priority": priority,
+                    "dept": dept, "assigned_to": assign_to, "desc": desc,
+                    "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    "started_at": "", "completed_at": "", "comp_notes": "",
+                    "status": "Pending", "is_repeat": is_repeat, "points": 0, "guest_review": None
+                }
+                db["records"].append(new_order)
+                st.success(f"✅ Dispatched Order #{new_id} to {assign_to}!")
+                st.rerun()
 
+# TAB 2: ACTIVE TASKS, WORK COMPLETION & QR CODES
 with tab_active:
-    for order in db["records"]:
-        if order["status"] != "Completed":
-            st.write(f"Room {order['room']} - {order['status']}")
+    st.header("Staff Execution Hub")
+    filter_staff = st.selectbox("View Queue For:", ["All Staff"] + STAFF_LIST)
+    
+    filtered_orders = [
+        o for o in db["records"] 
+        if (filter_staff == "All Staff" or o["assigned_to"] == filter_staff) and o["status"] != "Completed"
+    ]
+    
+    if not filtered_orders:
+        st.info("🎉 Current queue cleared.")
+    else:
+        for idx, order in enumerate(filtered_orders):
+            with st.container():
+                st.markdown(f"### Work Order #{order['id']} - Room {order['room']} ({order['priority']})")
+                st.write(f"**Assigned:** {order['assigned_to']} | **Type:** {order['type']} | **Created:** {order['created_at']}")
+                st.write(f"**Notes:** {order['desc']}")
+                
+                if order["status"] == "Pending":
+                    if st.button(f"▶️ Start Task #{order['id']}", key=f"s_{order['id']}"):
+                        order["status"] = "In Progress"
+                        order["started_at"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        st.rerun()
+                        
+                elif order["status"] == "In Progress":
+                    st.markdown(f"🟢 *Started: {order['started_at']}*")
+                    comp_note = st.text_input("Resolution Details (Min 4 letters):", key=f"n_{order['id']}")
+                    valid = len(comp_note.strip()) >= 4
+                    
+                    if not valid:
+                        st.warning("⚠️ Type at least 4 letters describing your fix to unlock the button.")
+                    
+                    if st.button(f"🏁 Complete Task #{order['id']}", key=f"c_{order['id']}", disabled=not valid):
+                        order["completed_at"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        order["comp_notes"] = comp_note
+                        order["status"] = "Completed"
+                        
+                        base = 10
+                        deductions = 5 if order["is_repeat"] else 0
+                        order["points"] = max(0, base - deductions)
+                        
+                        st.success("🏆 Task Closed out!")
+                        st.rerun()
+            st.markdown("---")
+            
+    # NEW FEATURE: QR CODE GENERATOR FOR RECENTLY COMPLETED TASKS
+    with st.expander("📱 Show QR Code to Guest for Review (Recently Completed Tasks)"):
+        completed_tasks = [o for o in db["records"] if o["status"] == "Completed" and not o.get("guest_review")]
+        if not completed_tasks:
+            st.info("No recently completed tasks waiting for review.")
+        else:
+            task_options = {f"Order #{o['id']} - Room {o['room']}": o['id'] for o in completed_tasks}
+            selected_task_label = st.selectbox("Select Task to generate QR:", list(task_options.keys()))
+            
+            if selected_task_label:
+                sel_id = task_options[selected_task_label]
+                
+                app_url = "https://12tenbank-collab-building21-app-app-gn893rndmg.streamlit.app"
+                review_url = f"{app_url}?review=true&id={sel_id}"
+                encoded_url = urllib.parse.quote(review_url)
+                
+                # Using QuickChart API and downloading server-side to bypass Safari ad-blockers
+                qr_api_url = f"https://quickchart.io/qr?text={encoded_url}&size=250"
+                
+                st.markdown("### Present this code to the guest:")
+                st.info(f"🔗 **Testing Link:** [Tap here to test the review page directly]({review_url})")
+                
+                col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
+                with col_q2:
+                    try:
+                        # Force the server to download the image so the phone doesn't block it
+                        req = urllib.request.Request(qr_api_url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req) as response:
+                            qr_bytes = response.read()
+                        st.image(qr_bytes, use_container_width=True)
+                    except Exception as e:
+                        st.error("Failed to load QR code. Please tap the Testing Link above.")
 
+# TAB 3: UNIT HISTORY SEARCH
 with tab_history:
-    st.header("Unit History")
-    search = st.text_input("Search Room:")
-    if search:
-        st.write([o for o in db["records"] if search in o["room"]])
+    st.header("Unit History & Trends")
+    search_room = st.text_input("🔍 Search by Room/Unit Number (e.g., 21-202A):")
+    
+    if search_room:
+        history = [o for o in db["records"] if search_room.lower() in o["room"].lower()]
+        if not history:
+            st.warning(f"No previous work orders found for unit '{search_room}'.")
+        else:
+            st.success(f"Found {len(history)} record(s) for unit '{search_room}'")
+            
+            df_history = pd.DataFrame(history)
+            cols_to_show = ["id", "dept", "assigned_to", "status", "created_at", "comp_notes"]
+            st.dataframe(df_history[cols_to_show], use_container_width=True)
+            
+            st.subheader("Guest Reviews for this Unit")
+            reviews = [o for o in history if o.get("guest_review")]
+            
+            if not reviews:
+                st.info("No guest reviews submitted for this unit yet.")
+            else:
+                for r in reviews:
+                    rev = r["guest_review"]
+                    st.markdown(f"**Order #{r['id']} ({r['dept']})** | Completed by {r['assigned_to']}")
+                    st.write(f"⚡ Quickness: {rev['quickness']}⭐ | 🛠️ Efficiency: {rev['efficiency']}⭐ | 🤝 Service: {rev['service']}⭐")
+                    if rev['notes']:
+                        st.write(f"🗣️ *\"{rev['notes']}\"*")
+                    if rev['contact_mgmt']:
+                        st.error("🚨 **GUEST REQUESTED MANAGEMENT CONTACT**")
+                    st.markdown("---")
 
+# TAB 4: PERFORMANCE ANALYTICS
 with tab_performance:
-    st.header("Team Performance & Building Health")
-    
-    # Heatmap Logic
-    floor_counts = [get_floor(o["room"]) for o in db["records"]]
-    df_counts = pd.DataFrame({"Floor": floor_counts}).value_counts().reset_index()
-    df_counts.columns = ["Floor", "Orders"]
-    
-    building_floors = [14, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
-    df_map = pd.DataFrame({"Floor": building_floors}).merge(df_counts, on="Floor", how="left").fillna(0)
-    
-    df_map["Zone"] = df_map["Floor"].apply(lambda f: "Zone 2" if f >= 7 else "Zone 1")
-    tech_map = {"Zone 1": "Stephen S., Mike R.", "Zone 2": "James W., Miguel V."}
-    df_map["Technicians"] = df_map["Zone"].map(tech_map)
-    df_map["Floor_Label"] = "Floor " + df_map["Floor"].astype(str)
-    
-    heatmap = alt.Chart(df_map).mark_rect(stroke='white', strokeWidth=2).encode(
-        y=alt.Y('Floor:O', sort=building_floors, title="Level"),
-        x=alt.X('Zone:N', title="Zone"),
-        color=alt.Color('Orders:Q', scale=alt.Scale(scheme='spectral', reverse=True)),
-        tooltip=['Floor_Label', 'Zone', 'Technicians', 'Orders']
-    )
-    st.altair_chart(heatmap, use_container_width=True)
+    st.header("Team Performance Matrix")
+    completed = [o for o in db["records"] if o["status"] == "Completed"]
+    if not completed:
+        st.info("Performance graphs will populate as tasks shift to completed statuses.")
+    else:
+        df_perf = pd.DataFrame(completed)
+        st.subheader("Efficiency Leaderboard Rankings (Accumulated Points)")
+        stats = df_perf.groupby("assigned_to")["points"].sum()
+        st.bar_chart(stats, color="#FF7A00")
+        st.dataframe(df_perf[["id", "room", "assigned_to", "comp_notes", "points"]], use_container_width=True)
