@@ -200,7 +200,8 @@ with tab_active:
                 # ========================================================
                 # 🚨 PASTE YOUR COPIED SAFARI APP LINK BELOW THIS LINE 🚨
                 # ========================================================
-                app_url = "PASTE_YOUR_LINK_HERE"
+                ⁠app_url = "https://12tenbank-collab-building21-app-app-gn893rndmg.streamlit.app"⁠
+
                 
                 # Failsafe cleanup (adds https:// if you missed it copying)
                 if not app_url.startswith("http"):
