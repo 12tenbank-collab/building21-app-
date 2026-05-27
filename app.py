@@ -5,6 +5,9 @@ from PIL import Image
 import urllib.parse
 import urllib.request
 import time
+import re
+import altair as alt
+import random
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION & CORPORATE BRAND DESIGN THEME
@@ -25,21 +28,64 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# 2. FREE CENTRAL SYNC DATABASE ENGINE
+# HELPER LOGIC: SMART FLOOR EXTRACTOR
+# ---------------------------------------------------------
+def get_floor(room_string):
+    """Automatically extracts the floor number from various room formats (e.g., '204', '21-202A')"""
+    matches = re.findall(r'\d+', str(room_string))
+    if not matches:
+        return 0
+    # Take the last grouping of digits (handles prefixes like 21-202)
+    last_num = int(matches[-1])
+    if last_num >= 100:
+        floor = last_num // 100
+    else:
+        floor = 1 
+    # Account for the skipped 13th floor
+    if floor == 13:
+        floor = 14
+    return floor
+
+# ---------------------------------------------------------
+# 2. FREE CENTRAL SYNC DATABASE ENGINE (WITH HEATMAP MOCK DATA)
 # ---------------------------------------------------------
 @st.cache_resource
 def get_shared_database():
-    return {
-        "records": [
-            {
-                "id": 101, "room": "204", "type": "Guest Call", "priority": "Urgent",
-                "dept": "Maintenance", "assigned_to": "James W.", "desc": "AC not cooling",
-                "created_at": "2026-05-27 08:00:00", "started_at": "2026-05-27 08:05:00",
-                "completed_at": "2026-05-27 08:35:00", "comp_notes": "Replaced filter and topped off freon",
-                "status": "Completed", "is_repeat": False, "points": 10, "guest_review": None
-            }
-        ]
-    }
+    records = [
+        {
+            "id": 101, "room": "204", "type": "Guest Call", "priority": "Urgent",
+            "dept": "Maintenance", "assigned_to": "James W.", "desc": "AC not cooling",
+            "created_at": "2026-05-27 08:00:00", "started_at": "2026-05-27 08:05:00",
+            "completed_at": "2026-05-27 08:35:00", "comp_notes": "Replaced filter and topped off freon",
+            "status": "Completed", "is_repeat": False, "points": 10, "guest_review": None
+        }
+    ]
+    
+    # 🔥 AUTO-GENERATING MOCK DATA TO DEMONSTRATE THE HEAT MAP 🔥
+    # Simulating 35 massive work orders on lower floors (1-4, 6)
+    for i in range(35):
+        fl = random.choice([1, 2, 3, 4, 6])
+        rm = f"{fl}{random.randint(10, 25):02d}"
+        records.append({
+            "id": 102+i, "room": rm, "type": "Maintenance", "priority": "Routine",
+            "dept": "Maintenance", "assigned_to": random.choice(["Stephen S.", "Mike R."]),
+            "desc": "Heatmap mock data", "created_at": "2026-05-27 10:00:00",
+            "started_at": "", "completed_at": "", "comp_notes": "",
+            "status": "Pending", "is_repeat": False, "points": 0, "guest_review": None
+        })
+    # Simulating only 5 calm orders on upper floors (8, 11, 12, 14)
+    for i in range(5):
+        fl = random.choice([8, 11, 12, 14])
+        rm = f"{fl}{random.randint(10, 25):02d}"
+        records.append({
+            "id": 200+i, "room": rm, "type": "Maintenance", "priority": "Routine",
+            "dept": "Maintenance", "assigned_to": random.choice(["James W.", "Miguel V."]),
+            "desc": "Heatmap mock data", "created_at": "2026-05-27 10:00:00",
+            "started_at": "", "completed_at": "", "comp_notes": "",
+            "status": "Pending", "is_repeat": False, "points": 0, "guest_review": None
+        })
+        
+    return {"records": records}
 
 db = get_shared_database()
 STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "Silvia M.", "Dispatch 1"]
@@ -81,7 +127,7 @@ if "review" in st.query_params:
                 }
                 st.success("Thank you for your valuable feedback! You may now close this screen.")
                 st.rerun()
-    st.stop() # This prevents the rest of the staff app from loading for the guest
+    st.stop() 
 
 # ---------------------------------------------------------
 # 4. DISPLAY HEADER LOGO (STAFF APP ONLY)
@@ -102,7 +148,7 @@ if st.button("🔄 Check For New Dispatches / Updates"):
 
 tab_create, tab_active, tab_history, tab_performance = st.tabs([
     "🆕 Create Work Order", 
-    "🛠️ Active Tasks & Completion", 
+    "🛠️ Active Tasks", 
     "🔍 Room History",
     "📊 Analytics"
 ])
@@ -140,7 +186,7 @@ with tab_create:
                 st.success(f"✅ Dispatched Order #{new_id} to {assign_to}!")
                 st.rerun()
 
-# TAB 2: ACTIVE TASKS, WORK COMPLETION & QR CODES
+# TAB 2: ACTIVE TASKS & WORK COMPLETION
 with tab_active:
     st.header("Staff Execution Hub")
     filter_staff = st.selectbox("View Queue For:", ["All Staff"] + STAFF_LIST)
@@ -186,7 +232,6 @@ with tab_active:
                         st.rerun()
             st.markdown("---")
             
-    # NEW FEATURE: QR CODE GENERATOR FOR RECENTLY COMPLETED TASKS
     with st.expander("📱 Show QR Code to Guest for Review (Recently Completed Tasks)"):
         completed_tasks = [o for o in db["records"] if o["status"] == "Completed" and not o.get("guest_review")]
         if not completed_tasks:
@@ -197,21 +242,16 @@ with tab_active:
             
             if selected_task_label:
                 sel_id = task_options[selected_task_label]
-                
                 app_url = "https://12tenbank-collab-building21-app-app-gn893rndmg.streamlit.app"
                 review_url = f"{app_url}?review=true&id={sel_id}"
                 encoded_url = urllib.parse.quote(review_url)
-                
-                # Using QuickChart API and downloading server-side to bypass Safari ad-blockers
                 qr_api_url = f"https://quickchart.io/qr?text={encoded_url}&size=250"
                 
                 st.markdown("### Present this code to the guest:")
                 st.info(f"🔗 **Testing Link:** [Tap here to test the review page directly]({review_url})")
-                
                 col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
                 with col_q2:
                     try:
-                        # Force the server to download the image so the phone doesn't block it
                         req = urllib.request.Request(qr_api_url, headers={'User-Agent': 'Mozilla/5.0'})
                         with urllib.request.urlopen(req) as response:
                             qr_bytes = response.read()
@@ -230,14 +270,12 @@ with tab_history:
             st.warning(f"No previous work orders found for unit '{search_room}'.")
         else:
             st.success(f"Found {len(history)} record(s) for unit '{search_room}'")
-            
             df_history = pd.DataFrame(history)
             cols_to_show = ["id", "dept", "assigned_to", "status", "created_at", "comp_notes"]
             st.dataframe(df_history[cols_to_show], use_container_width=True)
             
             st.subheader("Guest Reviews for this Unit")
             reviews = [o for o in history if o.get("guest_review")]
-            
             if not reviews:
                 st.info("No guest reviews submitted for this unit yet.")
             else:
@@ -245,21 +283,52 @@ with tab_history:
                     rev = r["guest_review"]
                     st.markdown(f"**Order #{r['id']} ({r['dept']})** | Completed by {r['assigned_to']}")
                     st.write(f"⚡ Quickness: {rev['quickness']}⭐ | 🛠️ Efficiency: {rev['efficiency']}⭐ | 🤝 Service: {rev['service']}⭐")
-                    if rev['notes']:
-                        st.write(f"🗣️ *\"{rev['notes']}\"*")
-                    if rev['contact_mgmt']:
-                        st.error("🚨 **GUEST REQUESTED MANAGEMENT CONTACT**")
                     st.markdown("---")
 
-# TAB 4: PERFORMANCE ANALYTICS
+# TAB 4: PERFORMANCE ANALYTICS & HEATMAP
 with tab_performance:
-    st.header("Team Performance Matrix")
+    st.header("Team Performance & Building Health")
+    
+    # --- 1. FLOOR HEATMAP ---
+    st.subheader("🏢 Thermal Building Heatmap (Work Order Volume)")
+    st.caption("Visually identifies slammed zones (Red/Orange) vs calm zones (Blue/Green)")
+    
+    # Calculate counts per floor
+    floor_counts = [get_floor(o["room"]) for o in db["records"]]
+    df_counts = pd.DataFrame({"Floor": floor_counts}).value_counts().reset_index()
+    df_counts.columns = ["Floor", "Orders"]
+    
+    # 13 is strictly skipped
+    building_floors = [14, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+    df_map = pd.DataFrame({"Floor": building_floors})
+    df_map = df_map.merge(df_counts, on="Floor", how="left").fillna(0)
+    
+    # Assign logic zones
+    def assign_zone(f):
+        if f >= 7: return "Zone 2 (James W. & Miguel V.)"
+        else: return "Zone 1 (Stephen S. & Mike R.)"
+        
+    df_map["Zone"] = df_map["Floor"].apply(assign_zone)
+    df_map["Floor_Label"] = "Floor " + df_map["Floor"].astype(str)
+    
+    # Spectral scale: Red=High, Green/Blue=Low
+    heatmap = alt.Chart(df_map).mark_rect(stroke='white', strokeWidth=2).encode(
+        y=alt.Y('Floor:O', sort=building_floors, title="Building Level", axis=alt.Axis(labelAngle=0)),
+        x=alt.X('Zone:N', title="Assigned Maintenance Zone", axis=alt.Axis(labelAngle=0, labelLimit=300)),
+        color=alt.Color('Orders:Q', scale=alt.Scale(scheme='spectral', reverse=True), title='Total Orders'),
+        tooltip=['Floor_Label', 'Zone', 'Orders']
+    ).properties(height=450)
+    
+    st.altair_chart(heatmap, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # --- 2. LEADERBOARD ---
     completed = [o for o in db["records"] if o["status"] == "Completed"]
     if not completed:
-        st.info("Performance graphs will populate as tasks shift to completed statuses.")
+        st.info("Leaderboard graphs will populate as tasks shift to completed statuses.")
     else:
         df_perf = pd.DataFrame(completed)
-        st.subheader("Efficiency Leaderboard Rankings (Accumulated Points)")
+        st.subheader("Efficiency Leaderboard Rankings (Points)")
         stats = df_perf.groupby("assigned_to")["points"].sum()
         st.bar_chart(stats, color="#FF7A00")
-        st.dataframe(df_perf[["id", "room", "assigned_to", "comp_notes", "points"]], use_container_width=True)
