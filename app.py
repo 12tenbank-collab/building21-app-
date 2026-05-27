@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from PIL import Image
 import urllib.parse
+import urllib.request
 import time
 
 # ---------------------------------------------------------
@@ -201,16 +202,22 @@ with tab_active:
                 review_url = f"{app_url}?review=true&id={sel_id}"
                 encoded_url = urllib.parse.quote(review_url)
                 
-                # CACHE BUSTER: Forces the API to generate a fresh image
-                cache_bust = int(time.time())
-                qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}&time={cache_bust}"
+                # Using QuickChart API and downloading server-side to bypass Safari ad-blockers
+                qr_api_url = f"https://quickchart.io/qr?text={encoded_url}&size=250"
                 
                 st.markdown("### Present this code to the guest:")
                 st.info(f"🔗 **Testing Link:** [Tap here to test the review page directly]({review_url})")
                 
                 col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
                 with col_q2:
-                    st.image(qr_image_url, use_container_width=True)
+                    try:
+                        # Force the server to download the image so the phone doesn't block it
+                        req = urllib.request.Request(qr_api_url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with urllib.request.urlopen(req) as response:
+                            qr_bytes = response.read()
+                        st.image(qr_bytes, use_container_width=True)
+                    except Exception as e:
+                        st.error("Failed to load QR code. Please tap the Testing Link above.")
 
 # TAB 3: UNIT HISTORY SEARCH
 with tab_history:
