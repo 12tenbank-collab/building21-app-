@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from PIL import Image
+import urllib.parse
 
 # ---------------------------------------------------------
 # 1. PAGE CONFIGURATION & CORPORATE BRAND DESIGN THEME
@@ -33,7 +34,7 @@ def get_shared_database():
                 "dept": "Maintenance", "assigned_to": "James W.", "desc": "AC not cooling",
                 "created_at": "2026-05-27 08:00:00", "started_at": "2026-05-27 08:05:00",
                 "completed_at": "2026-05-27 08:35:00", "comp_notes": "Replaced filter and topped off freon",
-                "status": "Completed", "is_repeat": False, "points": 10
+                "status": "Completed", "is_repeat": False, "points": 10, "guest_review": None
             }
         ]
     }
@@ -42,28 +43,66 @@ db = get_shared_database()
 STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "Silvia M.", "Dispatch 1"]
 
 # ---------------------------------------------------------
-# 3. DISPLAY HEADER LOGO (LOCAL FILE READER)
+# 3. GUEST REVIEW PORTAL (HIDES MAIN APP IF ACCESSED VIA QR)
+# ---------------------------------------------------------
+if "review" in st.query_params:
+    order_id = int(st.query_params.get("id", 0))
+    order = next((o for o in db["records"] if o["id"] == order_id), None)
+    
+    st.markdown("<h2 style='text-align: center; color: #0A3161;'>Building 21 Guest Feedback</h2>", unsafe_allow_html=True)
+    st.markdown("---")
+    
+    if not order:
+        st.error("Invalid review link.")
+    elif order.get("guest_review"):
+        st.success("✅ Thank you! Your feedback for this service has already been recorded.")
+    else:
+        st.write(f"**Reviewing Service For:** Room {order['room']}")
+        with st.form("guest_review_form"):
+            st.markdown("### Rate Your Experience (1 to 5 Stars)")
+            quickness = st.slider("1. Quickness / How fast did we respond to your concern?", 1, 5, 5)
+            efficiency = st.slider("2. Efficiency / How well did we fix the problem?", 1, 5, 5)
+            service = st.slider("3. Customer Service / How friendly and knowledgeable were we?", 1, 5, 5)
+            
+            st.markdown("### Additional Feedback")
+            notes = st.text_area("Any additional notes or comments for our team?")
+            contact_mgmt = st.checkbox("I would like to speak with management regarding this service.")
+            
+            if st.form_submit_button("Submit Review"):
+                order["guest_review"] = {
+                    "quickness": quickness,
+                    "efficiency": efficiency,
+                    "service": service,
+                    "notes": notes,
+                    "contact_mgmt": contact_mgmt,
+                    "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+                st.success("Thank you for your valuable feedback! You may now close this screen.")
+                st.rerun()
+    st.stop() # This prevents the rest of the staff app from loading for the guest
+
+# ---------------------------------------------------------
+# 4. DISPLAY HEADER LOGO (STAFF APP ONLY)
 # ---------------------------------------------------------
 try:
     col_l1, col_l2, col_l3 = st.columns([1, 4, 1])
     with col_l2:
-        # Bypassing links entirely and reading the file directly from the GitHub folder
         logo_img = Image.open("IMG_0783.png")
         st.image(logo_img, use_container_width=True)
 except Exception as e:
-    st.error(f"Waiting on image sync...")
+    pass
 
 st.markdown("<h3 style='text-align: center; color: #0A3161;'>SYNCED WORK ORDER HUB</h3>", unsafe_allow_html=True)
 st.markdown("---")
 
-# Refresh button to sync changes across devices
 if st.button("🔄 Check For New Dispatches / Updates"):
     st.rerun()
 
-tab_create, tab_active, tab_performance = st.tabs([
+tab_create, tab_active, tab_history, tab_performance = st.tabs([
     "🆕 Create Work Order", 
     "🛠️ Active Tasks & Completion", 
-    "📊 Performance Analytics"
+    "🔍 Room History",
+    "📊 Analytics"
 ])
 
 # TAB 1: WORK ORDER CREATION
@@ -93,13 +132,13 @@ with tab_create:
                     "dept": dept, "assigned_to": assign_to, "desc": desc,
                     "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                     "started_at": "", "completed_at": "", "comp_notes": "",
-                    "status": "Pending", "is_repeat": is_repeat, "points": 0
+                    "status": "Pending", "is_repeat": is_repeat, "points": 0, "guest_review": None
                 }
                 db["records"].append(new_order)
                 st.success(f"✅ Dispatched Order #{new_id} to {assign_to}!")
                 st.rerun()
 
-# TAB 2: ACTIVE TASKS & WORK COMPLETION
+# TAB 2: ACTIVE TASKS, WORK COMPLETION & QR CODES
 with tab_active:
     st.header("Staff Execution Hub")
     filter_staff = st.selectbox("View Queue For:", ["All Staff"] + STAFF_LIST)
@@ -144,8 +183,64 @@ with tab_active:
                         st.success("🏆 Task Closed out!")
                         st.rerun()
             st.markdown("---")
+            
+    # NEW FEATURE: QR CODE GENERATOR FOR RECENTLY COMPLETED TASKS
+    with st.expander("📱 Show QR Code to Guest for Review (Recently Completed Tasks)"):
+        completed_tasks = [o for o in db["records"] if o["status"] == "Completed" and not o.get("guest_review")]
+        if not completed_tasks:
+            st.info("No recently completed tasks waiting for review.")
+        else:
+            task_options = {f"Order #{o['id']} - Room {o['room']}": o['id'] for o in completed_tasks}
+            selected_task_label = st.selectbox("Select Task to generate QR:", list(task_options.keys()))
+            
+            if selected_task_label:
+                sel_id = task_options[selected_task_label]
+                # Build the review link directly to your app
+                app_url = "https://12tenbank-collab-building21-app-app-q3rkgnvflazy.streamlit.app"
+                review_url = f"{app_url}?review=true&id={sel_id}"
+                encoded_url = urllib.parse.quote(review_url)
+                qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={encoded_url}"
+                
+                st.markdown("### Present this code to the guest:")
+                col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
+                with col_q2:
+                    st.image(qr_image_url, use_container_width=True)
 
-# TAB 3: PERFORMANCE ANALYTICS
+# TAB 3: UNIT HISTORY SEARCH
+with tab_history:
+    st.header("Unit History & Trends")
+    search_room = st.text_input("🔍 Search by Room/Unit Number (e.g., 21-202A):")
+    
+    if search_room:
+        history = [o for o in db["records"] if search_room.lower() in o["room"].lower()]
+        if not history:
+            st.warning(f"No previous work orders found for unit '{search_room}'.")
+        else:
+            st.success(f"Found {len(history)} record(s) for unit '{search_room}'")
+            
+            # Display Work Order History Data
+            df_history = pd.DataFrame(history)
+            cols_to_show = ["id", "dept", "assigned_to", "status", "created_at", "comp_notes"]
+            st.dataframe(df_history[cols_to_show], use_container_width=True)
+            
+            # Display Guest Reviews for this Unit
+            st.subheader("Guest Reviews for this Unit")
+            reviews = [o for o in history if o.get("guest_review")]
+            
+            if not reviews:
+                st.info("No guest reviews submitted for this unit yet.")
+            else:
+                for r in reviews:
+                    rev = r["guest_review"]
+                    st.markdown(f"**Order #{r['id']} ({r['dept']})** | Completed by {r['assigned_to']}")
+                    st.write(f"⚡ Quickness: {rev['quickness']}⭐ | 🛠️ Efficiency: {rev['efficiency']}⭐ | 🤝 Service: {rev['service']}⭐")
+                    if rev['notes']:
+                        st.write(f"🗣️ *\"{rev['notes']}\"*")
+                    if rev['contact_mgmt']:
+                        st.error("🚨 **GUEST REQUESTED MANAGEMENT CONTACT**")
+                    st.markdown("---")
+
+# TAB 4: PERFORMANCE ANALYTICS
 with tab_performance:
     st.header("Team Performance Matrix")
     completed = [o for o in db["records"] if o["status"] == "Completed"]
