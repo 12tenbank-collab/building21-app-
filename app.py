@@ -39,6 +39,34 @@ def get_floor(room_string):
     return floor
 
 # ---------------------------------------------------------
+# HELPER LOGIC: GAUGE BUILDER
+# ---------------------------------------------------------
+def build_gauge(metric_name, metric_score):
+    base_color = "#FF7A00" # Orange for low/caution
+    text_color = "#0A3161" # Navy for contrast
+
+    if metric_score >= 90:
+        base_color = "#4CAF50" # Green for good
+    elif metric_score >= 80:
+        base_color = "#FFC107" # Yellow for caution
+    
+    label_text = f"{metric_score:.1f}%"
+    sub_label_text = metric_name
+
+    gauge_html = f"""
+    <div style="width: 250px; text-align: center; font-family: sans-serif; display: inline-block; margin: 10px;">
+        <svg viewBox="0 0 100 100" width="100%" height="100%">
+            <circle cx="50" cy="50" r="45" stroke="#E2E8F0" stroke-width="8" fill="none" stroke-linecap="round"/>
+            <circle cx="50" cy="50" r="45" stroke="{base_color}" stroke-width="8" fill="none" stroke-linecap="round"
+                    stroke-dasharray="{metric_score*2.827} {2.827 * 100}" stroke-dashoffset="-0.1" transform="rotate(-90 50 50)"/>
+            <text x="50" y="55" text-anchor="middle" font-size="20" font-weight="bold" fill="{text_color}">{label_text}</text>
+            <text x="50" y="80" text-anchor="middle" font-size="12" fill="{text_color}">{sub_label_text}</text>
+        </svg>
+    </div>
+    """
+    return gauge_html
+
+# ---------------------------------------------------------
 # 2. FREE CENTRAL SYNC DATABASE ENGINE
 # ---------------------------------------------------------
 STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "Silvia M.", "Dispatch 1"]
@@ -62,10 +90,12 @@ def get_shared_database():
             "sfu_completed": False, "sfu_notes": ""
         })
     
-    monthly_reviews = [
+    # Official Monthly Data for Building 21 - Integrated Input Form
+    monthly_reviews = pd.DataFrame([
         {"Month": "March 2026", "Reviews": 58, "Overall Rating": 89.66, "Satisfaction": 90.50, "Cleanliness": 88.75, "Staff": 86.25, "Comfort": 91.25},
-        {"Month": "April 2026", "Reviews": 35, "Overall Rating": 93.97, "Satisfaction": 95.17, "Cleanliness": 95.69, "Staff": 90.52, "Comfort": 95.69}
-    ]
+        {"Month": "April 2026", "Reviews": 35, "Overall Rating": 93.97, "Satisfaction": 95.17, "Cleanliness": 95.69, "Staff": 90.52, "Comfort": 95.69},
+        {"Month": "", "Reviews": 0, "Overall Rating": 0.0, "Satisfaction": 0.0, "Cleanliness": 0.0, "Staff": 0.0, "Comfort": 0.0} # Placeholder for new entry
+    ])
         
     return {"records": records, "monthly_reviews": monthly_reviews}
 
@@ -286,53 +316,42 @@ with tab_performance:
     
     st.altair_chart(heatmap, use_container_width=True)
 
-# TAB 8: MONTHLY BUILDING PERFORMANCE 
+# TAB 8: MONTHLY BUILDING PERFORMANCE (GAUGE LAYOUT)
 with tab_monthly:
     st.header("Building 21 Monthly Guest Reviews")
     
-    df_reviews = pd.DataFrame(db["monthly_reviews"])
+    df_reviews = db["monthly_reviews"]
     
-    st.subheader("📊 Performance Growth")
-    df_melted = df_reviews.melt(
-        id_vars=["Month"], 
-        value_vars=["Overall Rating", "Cleanliness", "Staff", "Comfort", "Satisfaction"], 
-        var_name="Metric", 
-        value_name="Score"
-    )
+    # 1. Gauge Section - Big enough to clearly see individual stats
+    st.subheader("📊 Performance At A Glance (April 2026)")
     
-    bar_chart = alt.Chart(df_melted).mark_bar().encode(
-        x=alt.X('Month:N', title=None, axis=alt.Axis(labels=False, ticks=False)), 
-        y=alt.Y('Score:Q', scale=alt.Scale(domain=[75, 100]), title="Average Score"),
-        color=alt.Color('Month:N', scale=alt.Scale(range=['#0A3161', '#FF7A00']), legend=alt.Legend(title="Report Month", orient="top")),
-        column=alt.Column('Metric:N', title=None, header=alt.Header(labelOrient='bottom', labelFontWeight='bold')),
-        tooltip=['Month', 'Metric', 'Score']
-    ).properties(width=45, height=250)
+    # Extract specific data for the current month gauges (April 2026)
+    current_month_data = df_reviews[df_reviews['Month'] == 'April 2026'].iloc[0]
     
-    st.altair_chart(bar_chart, use_container_width=False) 
+    gauge_col1, gauge_col2, gauge_col3, gauge_col4 = st.columns(4)
     
-    st.subheader("📄 Official Report Data")
-    st.dataframe(df_reviews, use_container_width=True, hide_index=True)
-    
+    with gauge_col1:
+        st.markdown(build_gauge("Overall Rating", current_month_data["Overall Rating"]), unsafe_allow_html=True)
+        
+    with gauge_col2:
+        st.markdown(build_gauge("Overall Satisfaction", current_month_data["Satisfaction"]), unsafe_allow_html=True)
+        
+    with gauge_col3:
+        st.markdown(build_gauge("Cleanliness", current_month_data["Cleanliness"]), unsafe_allow_html=True)
+        
+    with gauge_col4:
+        st.markdown(build_gauge("Staff Rating", current_month_data["Staff"]), unsafe_allow_html=True)
+        
     st.markdown("---")
-    with st.expander("➕ Log Upcoming Monthly Report"):
-        with st.form("new_month_form"):
-            col_m1, col_m2, col_m3 = st.columns(3)
-            with col_m1:
-                new_month = st.text_input("Month (e.g. May 2026)")
-                new_reviews = st.number_input("Number of Reviews", min_value=0, value=0)
-            with col_m2:
-                new_rating = st.number_input("Overall Rating", min_value=0.0, max_value=100.0, value=0.0)
-                new_sat = st.number_input("Overall Satisfaction", min_value=0.0, max_value=100.0, value=0.0)
-            with col_m3:
-                new_clean = st.number_input("Cleanliness Rating", min_value=0.0, max_value=100.0, value=0.0)
-                new_staff = st.number_input("Staff Rating", min_value=0.0, max_value=100.0, value=0.0)
-                new_comf = st.number_input("Comfort Rating", min_value=0.0, max_value=100.0, value=0.0)
-                
-            if st.form_submit_button("Save Report to Database"):
-                if new_month:
-                    db["monthly_reviews"].append({
-                        "Month": new_month, "Reviews": new_reviews, "Overall Rating": new_rating, 
-                        "Satisfaction": new_sat, "Cleanliness": new_clean, "Staff": new_staff, "Comfort": new_comf
-                    })
-                    st.success(f"{new_month} data saved!")
-                    st.rerun()
+    
+    # 2. Raw Data Table with Integrated Input Form
+    st.subheader("📄 Official Report Data")
+    
+    # Data Editor - make placeholder row editable
+    updated_reviews = st.data_editor(df_reviews, use_container_width=True, hide_index=True)
+    
+    # Button to commit the new data
+    if st.button("💾 Save Monthly Data to Database"):
+        db["monthly_reviews"] = updated_reviews
+        st.success("Monthly report data saved successfully.")
+        st.rerun()
