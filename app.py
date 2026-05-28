@@ -173,14 +173,13 @@ with tab_performance:
     
     st.altair_chart(heatmap, use_container_width=True)
 
-# TAB 5: MONTHLY BUILDING PERFORMANCE (UPDATED LAYOUT)
+# TAB 5: MONTHLY BUILDING PERFORMANCE 
 with tab_monthly:
     st.header("Building 21 Monthly Guest Reviews")
     st.caption("Tracking Booking.com average sentiment and operational scores over time.")
     
     df_reviews = pd.DataFrame(db["monthly_reviews"])
     
-    # Optimized and compact Bar Chart
     st.subheader("📊 Performance Growth (March vs. April)")
     df_melted = df_reviews.melt(
         id_vars=["Month"], 
@@ -189,25 +188,22 @@ with tab_monthly:
         value_name="Score"
     )
     
+    # Redesigned compact mobile-friendly grouped bar chart
     bar_chart = alt.Chart(df_melted).mark_bar().encode(
-        # Keep metrics on x-axis to align with table columns
-        x=alt.X('Metric:N', title=None, axis=alt.Axis(labelAngle=0, labelFontWeight='bold', labelFontSize=12)),
-        # Bars side-by-side by Month
-        xOffset='Month:N',
-        y=alt.Y('Score:Q', scale=alt.Scale(domain=[80, 100]), title="Average Score"),
-        # Color by Month for quick comparison
+        x=alt.X('Month:N', title=None, axis=alt.Axis(labels=False, ticks=False)), 
+        y=alt.Y('Score:Q', scale=alt.Scale(domain=[75, 100]), title="Average Score"),
         color=alt.Color('Month:N', scale=alt.Scale(range=['#0A3161', '#FF7A00']), legend=alt.Legend(title="Report Month", orient="top")),
+        column=alt.Column('Metric:N', title=None, header=alt.Header(labelOrient='bottom', labelFontWeight='bold')),
         tooltip=['Month', 'Metric', 'Score']
-    ).properties(height=300) # Compact height
+    ).properties(width=45, height=250) # Hard-coded tight dimensions for mobile
     
-    # Force alignment with the table by using the full container width
-    st.altair_chart(bar_chart, use_container_width=True)
+    # use_container_width=False forces it to respect our strict compact dimensions
+    st.altair_chart(bar_chart, use_container_width=False) 
     
-    # Stretched Data Table to match chart width
+    # Data Table perfectly aligned beneath
     st.subheader("📄 Official Report Data")
     st.dataframe(df_reviews, use_container_width=True, hide_index=True)
     
-    # Form to inject new monthly data
     st.markdown("---")
     with st.expander("➕ Log Upcoming Monthly Report"):
         with st.form("new_month_form"):
