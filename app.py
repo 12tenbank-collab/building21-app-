@@ -90,11 +90,10 @@ def get_shared_database():
             "sfu_completed": False, "sfu_notes": ""
         })
     
-    # Official Monthly Data for Building 21 - Integrated Input Form
     monthly_reviews = pd.DataFrame([
         {"Month": "March 2026", "Reviews": 58, "Overall Rating": 89.66, "Satisfaction": 90.50, "Cleanliness": 88.75, "Staff": 86.25, "Comfort": 91.25},
         {"Month": "April 2026", "Reviews": 35, "Overall Rating": 93.97, "Satisfaction": 95.17, "Cleanliness": 95.69, "Staff": 90.52, "Comfort": 95.69},
-        {"Month": "", "Reviews": 0, "Overall Rating": 0.0, "Satisfaction": 0.0, "Cleanliness": 0.0, "Staff": 0.0, "Comfort": 0.0} # Placeholder for new entry
+        {"Month": "", "Reviews": 0, "Overall Rating": 0.0, "Satisfaction": 0.0, "Cleanliness": 0.0, "Staff": 0.0, "Comfort": 0.0}
     ])
         
     return {"records": records, "monthly_reviews": monthly_reviews}
@@ -109,14 +108,17 @@ if "review" in st.query_params:
     st.stop()
 
 # ---------------------------------------------------------
-# 4. STAFF HUB
+# 4. STAFF HUB & GLOBAL HEADER
 # ---------------------------------------------------------
 try:
     with st.columns([1, 4, 1])[1]:
         st.image(Image.open("IMG_0783.png"), use_container_width=True)
 except: pass
 
-st.markdown("<h3 style='text-align: center; color: #0A3161;'>SYNCED WORK ORDER HUB</h3>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align: center; color: #0A3161; margin-bottom: 0px;'>SYNCED WORK ORDER HUB</h3>", unsafe_allow_html=True)
+# GLOBAL AUTHOR CREDIT (TOP)
+st.markdown("<p style='text-align: center; color: #FF7A00; font-weight: bold; font-size: 14px; margin-top: 5px;'>Developed by Terrance Wiggs</p>", unsafe_allow_html=True)
+st.markdown("---")
 
 tab_create, tab_active, tab_completed, tab_guest, tab_repeats, tab_history, tab_performance, tab_monthly = st.tabs([
     "🆕 Create", 
@@ -252,11 +254,9 @@ with tab_guest:
                 st.write(f"**Assigned To:** {order['assigned_to']} | **Dept:** {order['dept']}")
                 st.write(f"**Issue:** {order['desc']}")
                 
-                # SFU Logic Input
                 new_sfu = st.checkbox("SFU Completed (Supervisor Follow-Up)", value=order.get("sfu_completed", False), key=f"sfu_check_{order['id']}")
                 new_note = st.text_input("Supervisor Notes:", value=order.get("sfu_notes", ""), key=f"sfu_note_{order['id']}")
                 
-                # Button to commit the SFU update
                 if st.button(f"💾 Save SFU Updates (Order #{order['id']})", key=f"sfu_save_{order['id']}"):
                     order["sfu_completed"] = new_sfu
                     order["sfu_notes"] = new_note
@@ -322,36 +322,31 @@ with tab_monthly:
     
     df_reviews = db["monthly_reviews"]
     
-    # 1. Gauge Section - Big enough to clearly see individual stats
     st.subheader("📊 Performance At A Glance (April 2026)")
-    
-    # Extract specific data for the current month gauges (April 2026)
     current_month_data = df_reviews[df_reviews['Month'] == 'April 2026'].iloc[0]
     
     gauge_col1, gauge_col2, gauge_col3, gauge_col4 = st.columns(4)
-    
     with gauge_col1:
         st.markdown(build_gauge("Overall Rating", current_month_data["Overall Rating"]), unsafe_allow_html=True)
-        
     with gauge_col2:
         st.markdown(build_gauge("Overall Satisfaction", current_month_data["Satisfaction"]), unsafe_allow_html=True)
-        
     with gauge_col3:
         st.markdown(build_gauge("Cleanliness", current_month_data["Cleanliness"]), unsafe_allow_html=True)
-        
     with gauge_col4:
         st.markdown(build_gauge("Staff Rating", current_month_data["Staff"]), unsafe_allow_html=True)
         
     st.markdown("---")
-    
-    # 2. Raw Data Table with Integrated Input Form
     st.subheader("📄 Official Report Data")
     
-    # Data Editor - make placeholder row editable
     updated_reviews = st.data_editor(df_reviews, use_container_width=True, hide_index=True)
     
-    # Button to commit the new data
     if st.button("💾 Save Monthly Data to Database"):
         db["monthly_reviews"] = updated_reviews
         st.success("Monthly report data saved successfully.")
         st.rerun()
+
+# ---------------------------------------------------------
+# 5. GLOBAL FOOTER (Displays at the bottom of every page)
+# ---------------------------------------------------------
+st.markdown("---")
+st.markdown(f"<p style='text-align: center; color: #0A3161; font-weight: bold; font-size: 14px;'>© {datetime.now().year} Building 21 Work Order Management | Developed by Terrance Wiggs</p>", unsafe_allow_html=True)
