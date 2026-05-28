@@ -173,14 +173,14 @@ with tab_performance:
     
     st.altair_chart(heatmap, use_container_width=True)
 
-# TAB 5: MONTHLY BUILDING PERFORMANCE (NEW)
+# TAB 5: MONTHLY BUILDING PERFORMANCE (UPDATED LAYOUT)
 with tab_monthly:
     st.header("Building 21 Monthly Guest Reviews")
     st.caption("Tracking Booking.com average sentiment and operational scores over time.")
     
     df_reviews = pd.DataFrame(db["monthly_reviews"])
     
-    # Visual Bar Chart showing Month-over-Month comparison
+    # Optimized and compact Bar Chart
     st.subheader("📊 Performance Growth (March vs. April)")
     df_melted = df_reviews.melt(
         id_vars=["Month"], 
@@ -190,19 +190,24 @@ with tab_monthly:
     )
     
     bar_chart = alt.Chart(df_melted).mark_bar().encode(
-        x=alt.X('Month:N', title=None, axis=alt.Axis(labels=False)),
+        # Keep metrics on x-axis to align with table columns
+        x=alt.X('Metric:N', title=None, axis=alt.Axis(labelAngle=0, labelFontWeight='bold', labelFontSize=12)),
+        # Bars side-by-side by Month
+        xOffset='Month:N',
         y=alt.Y('Score:Q', scale=alt.Scale(domain=[80, 100]), title="Average Score"),
+        # Color by Month for quick comparison
         color=alt.Color('Month:N', scale=alt.Scale(range=['#0A3161', '#FF7A00']), legend=alt.Legend(title="Report Month", orient="top")),
-        column=alt.Column('Metric:N', title=None, header=alt.Header(labelOrient='bottom', labelFontSize=12, labelFontWeight='bold'))
-    ).properties(width=130, height=350)
+        tooltip=['Month', 'Metric', 'Score']
+    ).properties(height=300) # Compact height
     
-    st.altair_chart(bar_chart)
+    # Force alignment with the table by using the full container width
+    st.altair_chart(bar_chart, use_container_width=True)
     
-    # Raw Data Table
+    # Stretched Data Table to match chart width
     st.subheader("📄 Official Report Data")
     st.dataframe(df_reviews, use_container_width=True, hide_index=True)
     
-    # Form to inject new monthly data when it arrives
+    # Form to inject new monthly data
     st.markdown("---")
     with st.expander("➕ Log Upcoming Monthly Report"):
         with st.form("new_month_form"):
