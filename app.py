@@ -41,13 +41,26 @@ def get_floor(room_string):
 # ---------------------------------------------------------
 # 2. FREE CENTRAL SYNC DATABASE ENGINE
 # ---------------------------------------------------------
+STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "Silvia M.", "Dispatch 1"]
+
 @st.cache_resource
 def get_shared_database():
     records = []
-    # Mock data to populate your heatmap
-    for i in range(40):
+    # Fully populated mock data so it looks clean and realistic
+    for i in range(15):
         fl = random.choice([1, 2, 3, 4, 6] if random.random() > 0.3 else [8, 11, 12, 14])
-        records.append({"id": i, "room": f"{fl}{random.randint(10, 25)}", "status": "Pending", "assigned_to": "Stephen S.", "points": 0})
+        is_rep = random.choice([True, False, False, False]) # 25% chance of being a repeat
+        stat = random.choice(["Pending", "In Progress", "Completed"])
+        records.append({
+            "id": i + 100, "room": f"{fl}{random.randint(10, 25):02d}", 
+            "type": random.choice(["Guest Call", "Supervisor"]), "priority": "Routine",
+            "dept": "Maintenance", "assigned_to": random.choice(STAFF_LIST), 
+            "desc": "Check AC unit / Plumbing inspection", "created_at": "2026-05-28 08:00:00",
+            "started_at": "2026-05-28 08:15:00" if stat != "Pending" else "", 
+            "completed_at": "2026-05-28 09:00:00" if stat == "Completed" else "", 
+            "comp_notes": "Resolved standard issue" if stat == "Completed" else "",
+            "status": stat, "is_repeat": is_rep, "points": 10 if stat == "Completed" else 0, "guest_review": None
+        })
     
     # Official Monthly Data for Building 21
     monthly_reviews = [
@@ -58,7 +71,6 @@ def get_shared_database():
     return {"records": records, "monthly_reviews": monthly_reviews}
 
 db = get_shared_database()
-STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "Silvia M.", "Dispatch 1"]
 
 # ---------------------------------------------------------
 # 3. GUEST REVIEW PORTAL (HIDES MAIN APP)
@@ -77,12 +89,15 @@ except: pass
 
 st.markdown("<h3 style='text-align: center; color: #0A3161;'>SYNCED WORK ORDER HUB</h3>", unsafe_allow_html=True)
 
-tab_create, tab_active, tab_history, tab_performance, tab_monthly = st.tabs([
-    "🆕 Create Work Order", 
-    "🛠️ Active Tasks", 
-    "🔍 Room History", 
+# SHORTER TAB NAMES TO FIT MOBILE SCREEN
+tab_create, tab_active, tab_completed, tab_repeats, tab_history, tab_performance, tab_monthly = st.tabs([
+    "🆕 Create", 
+    "🛠️ Active",
+    "✅ Completed",
+    "🔁 Repeats",
+    "🔍 History", 
     "📊 Analytics",
-    "📈 Monthly Building Performance"
+    "📈 Monthly"
 ])
 
 # TAB 1: WORK ORDER CREATION
@@ -112,11 +127,12 @@ with tab_create:
             st.success(f"✅ Dispatched Order #{new_id} to {assign_to}!")
             st.rerun()
 
-# TAB 2: ACTIVE TASKS & WORK COMPLETION
+# TAB 2: ACTIVE TASKS (STRICTLY PENDING/IN PROGRESS)
 with tab_active:
-    st.header("Staff Execution Hub")
-    filter_staff = st.selectbox("View Queue For:", ["All Staff"] + STAFF_LIST)
+    st.header("Action Required")
+    filter_staff = st.selectbox("View Queue For:", ["All Staff"] + STAFF_LIST, key="active_filter")
     
+    # Only pull orders that are NOT completed
     filtered_orders = [o for o in db["records"] if (filter_staff == "All Staff" or o.get("assigned_to") == filter_staff) and o.get("status") != "Completed"]
     
     if not filtered_orders:
@@ -125,20 +141,90 @@ with tab_active:
         for order in filtered_orders:
             with st.container():
                 st.markdown(f"### Work Order #{order['id']} - Room {order['room']}")
-                st.write(f"**Assigned:** {order.get('assigned_to', 'N/A')} | **Type:** {order.get('type', 'N/A')}")
+                st.write(f"**Assigned:** {order.get('assigned_to')} | **Type:** {order.get('type')}")
+                st.write(f"**Details:** {order.get('desc')}")
                 
                 if order["status"] == "Pending":
                     if st.button(f"▶️ Start Task #{order['id']}", key=f"s_{order['id']}"):
                         order["status"] = "In Progress"
+                        order["started_at"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         st.rerun()
+                        
                 elif order["status"] == "In Progress":
-                    if st.button(f"🏁 Complete Task #{order['id']}", key=f"c_{order['id']}"):
+                    st.markdown(f"🟢 *Started: {order.get('started_at')}*")
+                    comp_note = st.text_input("Resolution Details (Min 4 letters):", key=f"n_{order['id']}")
+                    valid = len(comp_note.strip()) >= 4
+                    
+                    if not valid:
+                        st.warning("⚠️ Type at least 4 letters describing your fix to unlock.")
+                    
+                    if st.button(f"🏁 Complete Task #{order['id']}", key=f"c_{order['id']}", disabled=not valid):
                         order["status"] = "Completed"
-                        order["points"] = 10
+                        order["comp_notes"] = comp_note
+                        order["completed_at"] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        order["points"] = max(0, 10 - (5 if order.get("is_repeat") else 0))
+                        st.success("🏆 Task Closed!")
                         st.rerun()
             st.markdown("---")
 
-# TAB 3: UNIT HISTORY SEARCH
+# TAB 3: COMPLETED TASKS & QR CODES
+with tab_completed:
+    st.header("Completed Task Archive")
+    
+    completed_orders = [o for o in db["records"] if o.get("status") == "Completed"]
+    
+    if not completed_orders:
+        st.info("No tasks completed yet.")
+    else:
+        # Display the 10 most recent completed tasks
+        for order in reversed(completed_orders[-10:]):
+            st.markdown(f"**Order #{order['id']} - Room {order['room']}** | Closed by {order['assigned_to']}")
+            st.caption(f"Notes: {order['comp_notes']}")
+            st.markdown("---")
+            
+        with st.expander("📱 Show QR Code for Guest Review"):
+            tasks_no_review = [o for o in completed_orders if not o.get("guest_review")]
+            if not tasks_no_review:
+                st.info("No recent tasks waiting for review.")
+            else:
+                task_options = {f"Order #{o['id']} - Room {o['room']}": o['id'] for o in tasks_no_review}
+                selected_task_label = st.selectbox("Select Task:", list(task_options.keys()))
+                
+                if selected_task_label:
+                    sel_id = task_options[selected_task_label]
+                    app_url = "https://12tenbank-collab-building21-app-app-gn893rndmg.streamlit.app"
+                    review_url = f"{app_url}?review=true&id={sel_id}"
+                    encoded_url = urllib.parse.quote(review_url)
+                    qr_api_url = f"https://quickchart.io/qr?text={encoded_url}&size=250"
+                    
+                    st.info(f"🔗 **Testing Link:** [Tap here to test]({review_url})")
+                    col_q1, col_q2, col_q3 = st.columns([1, 2, 1])
+                    with col_q2:
+                        try:
+                            req = urllib.request.Request(qr_api_url, headers={'User-Agent': 'Mozilla/5.0'})
+                            with urllib.request.urlopen(req) as response:
+                                qr_bytes = response.read()
+                            st.image(qr_bytes, use_container_width=True)
+                        except Exception as e:
+                            st.error("Failed to load QR code.")
+
+# TAB 4: REPEAT TASKS
+with tab_repeats:
+    st.header("Repeat Task Alerts")
+    st.caption("Monitoring chronic issues requiring management intervention.")
+    
+    repeat_orders = [o for o in db["records"] if o.get("is_repeat") == True]
+    
+    if not repeat_orders:
+        st.success("No repeat tasks currently logged! 🎉")
+    else:
+        for order in repeat_orders:
+            st.error(f"🚨 **REPEAT CALL: Room {order['room']}** (Order #{order['id']})")
+            st.write(f"Assigned to: {order['assigned_to']} | Status: {order['status']}")
+            st.write(f"Issue: {order['desc']}")
+            st.markdown("---")
+
+# TAB 5: UNIT HISTORY SEARCH
 with tab_history:
     st.header("Unit History & Trends")
     search_room = st.text_input("🔍 Search by Room/Unit Number:")
@@ -147,13 +233,13 @@ with tab_history:
         if not history:
             st.warning("No previous work orders found.")
         else:
-            st.dataframe(pd.DataFrame(history)[["id", "room", "assigned_to", "status"]], use_container_width=True)
+            st.dataframe(pd.DataFrame(history)[["id", "room", "assigned_to", "status", "is_repeat"]], use_container_width=True)
 
-# TAB 4: PERFORMANCE ANALYTICS & HEATMAP
+# TAB 6: PERFORMANCE ANALYTICS & HEATMAP
 with tab_performance:
     st.header("Team Performance & Building Health")
     
-    st.subheader("🏢 Thermal Building Heatmap (Work Order Volume)")
+    st.subheader("🏢 Thermal Building Heatmap")
     floor_counts = [get_floor(o.get("room", "0")) for o in db["records"]]
     df_counts = pd.DataFrame({"Floor": floor_counts}).value_counts().reset_index()
     df_counts.columns = ["Floor", "Orders"]
@@ -173,14 +259,13 @@ with tab_performance:
     
     st.altair_chart(heatmap, use_container_width=True)
 
-# TAB 5: MONTHLY BUILDING PERFORMANCE 
+# TAB 7: MONTHLY BUILDING PERFORMANCE 
 with tab_monthly:
     st.header("Building 21 Monthly Guest Reviews")
-    st.caption("Tracking Booking.com average sentiment and operational scores over time.")
     
     df_reviews = pd.DataFrame(db["monthly_reviews"])
     
-    st.subheader("📊 Performance Growth (March vs. April)")
+    st.subheader("📊 Performance Growth")
     df_melted = df_reviews.melt(
         id_vars=["Month"], 
         value_vars=["Overall Rating", "Cleanliness", "Staff", "Comfort", "Satisfaction"], 
@@ -188,19 +273,16 @@ with tab_monthly:
         value_name="Score"
     )
     
-    # Redesigned compact mobile-friendly grouped bar chart
     bar_chart = alt.Chart(df_melted).mark_bar().encode(
         x=alt.X('Month:N', title=None, axis=alt.Axis(labels=False, ticks=False)), 
         y=alt.Y('Score:Q', scale=alt.Scale(domain=[75, 100]), title="Average Score"),
         color=alt.Color('Month:N', scale=alt.Scale(range=['#0A3161', '#FF7A00']), legend=alt.Legend(title="Report Month", orient="top")),
         column=alt.Column('Metric:N', title=None, header=alt.Header(labelOrient='bottom', labelFontWeight='bold')),
         tooltip=['Month', 'Metric', 'Score']
-    ).properties(width=45, height=250) # Hard-coded tight dimensions for mobile
+    ).properties(width=45, height=250)
     
-    # use_container_width=False forces it to respect our strict compact dimensions
     st.altair_chart(bar_chart, use_container_width=False) 
     
-    # Data Table perfectly aligned beneath
     st.subheader("📄 Official Report Data")
     st.dataframe(df_reviews, use_container_width=True, hide_index=True)
     
