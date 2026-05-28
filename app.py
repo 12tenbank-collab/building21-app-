@@ -18,7 +18,7 @@ st.markdown("""
     <style>
     .stApp { background-color: #F4F7F9; color: #0A3161; }
     h1, h2, h3, h4, h5, h6 { color: #0A3161 !important; font-weight: 700 !important; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; background-color: #E2E8F0; padding: 8px; border-radius: 8px; }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; background-color: #E2E8F0; padding: 8px; border-radius: 8px; flex-wrap: wrap; }
     .stTabs [data-baseweb="tab"] { color: #0A3161 !important; background-color: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 6px; padding: 8px 16px; font-weight: 500; }
     .stTabs [aria-selected="true"] { background-color: #FF7A00 !important; color: #FFFFFF !important; font-weight: bold; border: 1px solid #FF7A00 !important; }
     .stTextInput>div>div>input, .stSelectbox>div>div>div, .stTextArea>div>div>textarea { border-color: #0A3161 !important; color: #0A3161 !important; }
@@ -46,10 +46,9 @@ STAFF_LIST = ["James W.", "Stephen S.", "Miguel V.", "Mike R.", "Johanna M.", "S
 @st.cache_resource
 def get_shared_database():
     records = []
-    # Fully populated mock data so it looks clean and realistic
     for i in range(15):
         fl = random.choice([1, 2, 3, 4, 6] if random.random() > 0.3 else [8, 11, 12, 14])
-        is_rep = random.choice([True, False, False, False]) # 25% chance of being a repeat
+        is_rep = random.choice([True, False, False, False])
         stat = random.choice(["Pending", "In Progress", "Completed"])
         records.append({
             "id": i + 100, "room": f"{fl}{random.randint(10, 25):02d}", 
@@ -59,10 +58,10 @@ def get_shared_database():
             "started_at": "2026-05-28 08:15:00" if stat != "Pending" else "", 
             "completed_at": "2026-05-28 09:00:00" if stat == "Completed" else "", 
             "comp_notes": "Resolved standard issue" if stat == "Completed" else "",
-            "status": stat, "is_repeat": is_rep, "points": 10 if stat == "Completed" else 0, "guest_review": None
+            "status": stat, "is_repeat": is_rep, "points": 10 if stat == "Completed" else 0, "guest_review": None,
+            "sfu_completed": False, "sfu_notes": ""
         })
     
-    # Official Monthly Data for Building 21
     monthly_reviews = [
         {"Month": "March 2026", "Reviews": 58, "Overall Rating": 89.66, "Satisfaction": 90.50, "Cleanliness": 88.75, "Staff": 86.25, "Comfort": 91.25},
         {"Month": "April 2026", "Reviews": 35, "Overall Rating": 93.97, "Satisfaction": 95.17, "Cleanliness": 95.69, "Staff": 90.52, "Comfort": 95.69}
@@ -89,11 +88,11 @@ except: pass
 
 st.markdown("<h3 style='text-align: center; color: #0A3161;'>SYNCED WORK ORDER HUB</h3>", unsafe_allow_html=True)
 
-# SHORTER TAB NAMES TO FIT MOBILE SCREEN
-tab_create, tab_active, tab_completed, tab_repeats, tab_history, tab_performance, tab_monthly = st.tabs([
+tab_create, tab_active, tab_completed, tab_guest, tab_repeats, tab_history, tab_performance, tab_monthly = st.tabs([
     "🆕 Create", 
     "🛠️ Active",
     "✅ Completed",
+    "🛎️ Guest Portal",
     "🔁 Repeats",
     "🔍 History", 
     "📊 Analytics",
@@ -122,7 +121,8 @@ with tab_create:
                 "dept": dept, "assigned_to": assign_to, "desc": desc,
                 "created_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 "started_at": "", "completed_at": "", "comp_notes": "",
-                "status": "Pending", "is_repeat": is_repeat, "points": 0, "guest_review": None
+                "status": "Pending", "is_repeat": is_repeat, "points": 0, "guest_review": None,
+                "sfu_completed": False, "sfu_notes": ""
             })
             st.success(f"✅ Dispatched Order #{new_id} to {assign_to}!")
             st.rerun()
@@ -132,7 +132,6 @@ with tab_active:
     st.header("Action Required")
     filter_staff = st.selectbox("View Queue For:", ["All Staff"] + STAFF_LIST, key="active_filter")
     
-    # Only pull orders that are NOT completed
     filtered_orders = [o for o in db["records"] if (filter_staff == "All Staff" or o.get("assigned_to") == filter_staff) and o.get("status") != "Completed"]
     
     if not filtered_orders:
@@ -176,7 +175,6 @@ with tab_completed:
     if not completed_orders:
         st.info("No tasks completed yet.")
     else:
-        # Display the 10 most recent completed tasks
         for order in reversed(completed_orders[-10:]):
             st.markdown(f"**Order #{order['id']} - Room {order['room']}** | Closed by {order['assigned_to']}")
             st.caption(f"Notes: {order['comp_notes']}")
@@ -208,7 +206,36 @@ with tab_completed:
                         except Exception as e:
                             st.error("Failed to load QR code.")
 
-# TAB 4: REPEAT TASKS
+# TAB 4: GUEST PORTAL (SFU TRACKING)
+with tab_guest:
+    st.header("Guest Operations Center")
+    st.caption("Central log for all Guest Calls and Supervisor Follow-Ups (SFU).")
+    
+    guest_orders = [o for o in db["records"] if o.get("type") == "Guest Call"]
+    
+    if not guest_orders:
+        st.success("No guest calls currently logged.")
+    else:
+        for order in reversed(guest_orders):
+            with st.container():
+                st.markdown(f"### Order #{order['id']} - Room {order['room']} ({order['status']})")
+                st.write(f"**Assigned To:** {order['assigned_to']} | **Dept:** {order['dept']}")
+                st.write(f"**Issue:** {order['desc']}")
+                
+                # SFU Logic Input
+                new_sfu = st.checkbox("SFU Completed (Supervisor Follow-Up)", value=order.get("sfu_completed", False), key=f"sfu_check_{order['id']}")
+                new_note = st.text_input("Supervisor Notes:", value=order.get("sfu_notes", ""), key=f"sfu_note_{order['id']}")
+                
+                # Button to commit the SFU update
+                if st.button(f"💾 Save SFU Updates (Order #{order['id']})", key=f"sfu_save_{order['id']}"):
+                    order["sfu_completed"] = new_sfu
+                    order["sfu_notes"] = new_note
+                    st.success("Follow-up saved successfully.")
+                    st.rerun()
+                    
+            st.markdown("---")
+
+# TAB 5: REPEAT TASKS
 with tab_repeats:
     st.header("Repeat Task Alerts")
     st.caption("Monitoring chronic issues requiring management intervention.")
@@ -224,7 +251,7 @@ with tab_repeats:
             st.write(f"Issue: {order['desc']}")
             st.markdown("---")
 
-# TAB 5: UNIT HISTORY SEARCH
+# TAB 6: UNIT HISTORY SEARCH
 with tab_history:
     st.header("Unit History & Trends")
     search_room = st.text_input("🔍 Search by Room/Unit Number:")
@@ -235,7 +262,7 @@ with tab_history:
         else:
             st.dataframe(pd.DataFrame(history)[["id", "room", "assigned_to", "status", "is_repeat"]], use_container_width=True)
 
-# TAB 6: PERFORMANCE ANALYTICS & HEATMAP
+# TAB 7: PERFORMANCE ANALYTICS & HEATMAP
 with tab_performance:
     st.header("Team Performance & Building Health")
     
@@ -259,7 +286,7 @@ with tab_performance:
     
     st.altair_chart(heatmap, use_container_width=True)
 
-# TAB 7: MONTHLY BUILDING PERFORMANCE 
+# TAB 8: MONTHLY BUILDING PERFORMANCE 
 with tab_monthly:
     st.header("Building 21 Monthly Guest Reviews")
     
